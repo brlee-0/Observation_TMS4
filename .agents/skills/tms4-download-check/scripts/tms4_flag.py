@@ -4,21 +4,22 @@
         4 접촉 이상 후 회복 없음, 8 스파이크, 9 결측(NaN)
 우선순위: 9 > 1 > 8 > 4 > 3 > 0
 시간: 원자료 UTC, 현장 기록지 현지시각(UTC+2)
+사용법: python tms4_flag.py <TMS CSV 폴더> <결과 폴더>
 """
 from pathlib import Path
+import argparse
 import re
 
 import numpy as np
 import pandas as pd
 
-IN_DIR = Path('/root/.claude/uploads/44a75c9f-5d9e-5247-a7be-759905774f5b')
-OUT_DIR = Path('/tmp/claude-0/-home-claude/44a75c9f-5d9e-5247-a7be-759905774f5b/scratchpad/tms/out')
 LOCAL_OFFSET = pd.Timedelta(hours=2)          # 기록지 시각 = UTC + 2
 COLS = ['idx', 'time', 'T1', 'T2', 'T3', 'raw', 'vwc', 'err']
 DROP_THR = 1.0                                # 15분 사이 VWC 하강 기준 (%p)
 SPIKE_THR = 1.0                               # 스파이크 기준 (%p)
 PRIORITY = [9, 1, 8, 4, 3]                    # 앞쪽이 우선
 
+# ---- 2026 스발바르 관측 설정 (새 관측이면 기록지를 보고 아래 네 표를 다시 채운다) ----
 # 센서별 설치 구간 (UTC, 자료에서 확인). (지점, 시작, 끝). 끝=None이면 파일 끝까지.
 DEPLOY = {
     'A_S5':   [('A',  '2026-07-13 10:15', '2026-07-20 10:45'),
@@ -160,8 +161,12 @@ def process(key: str, df: pd.DataFrame) -> list[tuple[str, pd.DataFrame, list[st
 
 
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for path in sorted(IN_DIR.glob('*_2026*.csv')):
+    ap = argparse.ArgumentParser(description='TMS4 다운로드 자료 플래그 부여')
+    ap.add_argument('in_dir', type=Path, help='TMS CSV 폴더 (지점_센서_날짜.csv)')
+    ap.add_argument('out_dir', type=Path, help='결과 저장 폴더')
+    args = ap.parse_args()
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for path in sorted(args.in_dir.glob('*_*_*.csv')):
         key = re.sub(r'^[0-9a-f]+-', '', path.stem).rsplit('_', 1)[0]
         if key not in DEPLOY:
             print(f'[건너뜀] {path.name}: DEPLOY 설정 없음')
@@ -169,7 +174,7 @@ def main() -> None:
         df = read_tms(path)
         n_pre = (df.index < pd.Timestamp(DEPLOY[key][0][1])).sum()
         for name, out, notes in process(key, df):
-            out.to_csv(OUT_DIR / f'{name}.csv', float_format='%.2f')
+            out.to_csv(args.out_dir / f'{name}.csv', float_format='%.2f')
             counts = out['flag'].value_counts().sort_index()
             print(f'{name}: {len(out)}행, ' +
                   ', '.join(f'flag{k}={v}' for k, v in counts.items()))
