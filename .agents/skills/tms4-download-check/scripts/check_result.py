@@ -21,7 +21,7 @@ Checks
   E12 vwc_qc of every row not flagged 9 inside the physical range (0-60 %)
   E13 every input sensor is in DEPLOY (no guessed sensor-site mapping)
   E14 every input sensor in DEPLOY has output; deployments of one sensor do not overlap
-  E15 every input file name is readable (<site>_<sensor>_YYYYMMDD.csv)
+  E15 every input file name is readable (<site>_<sensor>_YYYYMMDD.csv or _YYMMDD.csv)
   W1  share of flag 9 above --max-missing
   W2  missing run longer than 4 h
   W3  error column of the input not 0
@@ -31,6 +31,8 @@ Checks
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import sys
 from pathlib import Path
@@ -185,7 +187,8 @@ def main() -> int:
     for p in args.in_dir.rglob('*.csv'):
         if args.out_dir.resolve() not in p.resolve().parents and tf.sensor_from_name(p) is None:
             rep.err('E15', p.name, 'input file name not readable -> skipped by tms4_flag.py')
-    files = tf.collect_inputs(args.in_dir, args.out_dir)
+    with contextlib.redirect_stdout(io.StringIO()):        # its [skipped] lines -> E15 below
+        files = tf.collect_inputs(args.in_dir, args.out_dir)
     inputs: dict[str, pd.DataFrame] = {}
     for s, paths in files.items():
         try:

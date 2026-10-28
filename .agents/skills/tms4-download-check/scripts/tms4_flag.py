@@ -11,7 +11,8 @@ VWC: Lolly soil moisture conversion with the default soil type, applied at all s
 Raw values are never changed. Decisions go to `flag`; restored values only to `vwc_qc`.
 
 Usage: python tms4_svalbard_qc_en.py <TMS CSV folder> <output folder>
-Input file names: <site>_<sensor>_YYYYMMDD.csv (e.g. A_S1_20260807.csv) or <sensor>_MMDD_MMDD.csv.
+Input file names: <site>_<sensor>_YYYYMMDD.csv (e.g. A_S1_20260807.csv), <site>_<sensor>_YYMMDD.csv
+(e.g. A_S1_260723.csv) or <sensor>_MMDD_MMDD.csv.
 Subfolders are searched; multiple downloads of the same sensor are merged by time
 (on overlap, the latest file wins). The site in the file name is ignored; the site
 comes from the DEPLOY table (e.g. A_S1 data before 8/1 belong to C5).
@@ -285,14 +286,15 @@ def process_deployment(sensor: str, df: pd.DataFrame, site: str,
     return out, info
 
 
-NAME_NEW = re.compile(r'(?:^|[_-])[A-Z]\d?_([SL]\d{1,2})_(\d{8})$')    # A_S1_20260807
+NAME_NEW = re.compile(r'(?:^|[_-])[A-Z]\d?_([SL]\d{1,2})_(\d{8}|\d{6})$')  # A_S1_20260807, A_S1_260807
 NAME_OLD = re.compile(r'(?:^|[_-])([SL]\d{1,2})_\d{4}_(\d{4})$')       # S1_0710_1016
 
 
 def sensor_from_name(path: Path) -> tuple[str, str] | None:
     """(sensor, download date YYYYMMDD), or None if the name does not match."""
     if m := NAME_NEW.search(path.stem):
-        return m.group(1), m.group(2)
+        d = m.group(2)
+        return m.group(1), d if len(d) == 8 else f'20{d}'      # YYMMDD -> YYYYMMDD
     if m := NAME_OLD.search(path.stem):
         return m.group(1), f'{WINDOW[0]:%Y}{m.group(2)}'
     return None
