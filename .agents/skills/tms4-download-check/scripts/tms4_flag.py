@@ -3,7 +3,7 @@
 Rules follow tms4-download-check in brlee-0/Observation_TMS4.
   Flags: 0 good, 1 during a TMS download visit, 3 contact disturbance then recovered
          (restored values used), 4 contact disturbance without recovery,
-         8 spike, 9 missing (NaN, zero value, sensor out of the ground)
+         8 spike, 9 missing (NaN, zero value, sensor out of the ground, VWC > VWC_MAX)
   Priority: 9 > 1 > 8 > 4 > 3 > 0
 Time: TMS files are in UTC; the field log is in local time (UTC+2).
       Output carries both UTC and local time (UTC+2).
@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-VERSION = '2026-10-20'
+VERSION = '2026-10-29'
 
 # ---------------------------------------------------------------- basic settings
 COLS = ['idx', 'time', 'T1', 'T2', 'T3', 'raw', 'vwc', 'err']
@@ -37,6 +37,7 @@ LOCAL_OFFSET = pd.Timedelta(hours=2)            # field-log time = UTC + 2 (CEST
 WINDOW = (pd.Timestamp('2026-07-10 00:00'), pd.Timestamp('2026-08-12 23:45'))  # UTC
 DROP_THR = 0.5          # 15-min drop threshold for review (%p, SKILL.md)
 SPIKE_THR = 1.0         # single-record spike threshold (%p)
+VWC_MAX = 60.0          # VWC above this is not soil water (sensor/conversion fault) -> flag 9
 VISIT_DEFAULT = pd.Timedelta('10min')           # assumed visit length when departure is not logged
 N_EDGE = 4              # records (1 h) whose median sets each end of a restored segment
 PRIORITY = (9, 1, 8, 4, 3)                      # earlier = higher priority
@@ -200,7 +201,7 @@ def visit_mask(t: pd.DatetimeIndex, site: str) -> np.ndarray:
 
 def spike_mask(v: pd.Series) -> np.ndarray:
     """A single record that jumps and immediately returns (zeros and NaN excluded)."""
-    v = v.where(v > 0)
+    v = v.where((v > 0) & (v <= VWC_MAX))
     d_prev, d_next = v.diff(), v.diff(-1)
     return ((d_prev.abs() >= SPIKE_THR) & (d_next.abs() >= SPIKE_THR)
             & (np.sign(d_prev) == np.sign(d_next))).to_numpy()
@@ -237,7 +238,7 @@ def process_deployment(sensor: str, df: pd.DataFrame, site: str,
     t, v = d.index, d['vwc']
 
     masks = {f: np.zeros(len(t), bool) for f in PRIORITY}
-    masks[9] = (v.isna() | (v <= 0)).to_numpy()
+    masks[9] = (v.isna() | (v <= 0) | (v > VWC_MAX)).to_numpy()
     masks[1] = visit_mask(t, site)
     masks[8] = spike_mask(v)
     vwc_qc = v.copy()
@@ -270,7 +271,7 @@ def process_deployment(sensor: str, df: pd.DataFrame, site: str,
         'flag': flag,
     }, index=t)
 
-    dv = v.where(v > 0).diff()
+    dv = v.where((v > 0) & (v <= VWC_MAX)).diff()
     # Drops during a visit (flag 1) are reviewed too, since the lowered level persists.
     # Jumps up during a visit are reviewed as possible recovery of sensor contact.
     # Segments already judged as 3 or 4 (including the drop record) are excluded.

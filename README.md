@@ -42,4 +42,7 @@ Skill for TMS4 csv data
     └── .agents/skills/tms4-download-check/
         ├── SKILL.md
         ├── references/research.md
-        └── scripts/tms4_flag.py
+        └── scripts/
+            ├── tms4_flag.py      # 플래그·복원·지점별 파일
+            ├── check_result.py   # 끝내기 전 검증 (ERROR면 고쳐 다시)
+            └── guard_raw.py      # 원자료 쓰기·지우기를 막는 PreToolUse 훅
